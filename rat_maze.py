@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict, Set, Optional
 pygame.init()
 
 # Constants
-WIDTH, HEIGHT = 1200, 800
+WIDTH, HEIGHT = 1200, 780
 CELL_SIZE = 40
 GRID_WIDTH = 20
 GRID_HEIGHT = 15
@@ -46,6 +46,7 @@ G_SCORE_COLOR = (200, 255, 200)  # Light green
 PANEL_COLOR = (240, 240, 240)  # Light gray for UI panel
 CURRENT_NODE_COLOR = (255, 140, 0)  # Orange for current node being processed
 H_SCORE_COLOR = (255, 200, 255)  # Light purple for h-score
+F_SCORE_INDICATOR_COLOR = (255, 240, 180, 180)  # Semi-transparent yellow
 
 # Cell types
 class CellType(Enum):
@@ -80,7 +81,7 @@ class GameState:
         self.show_maze = True
         self.show_graph = False
         self.show_path = True
-        self.show_scores = False  # Master toggle for all scores
+        self.show_scores = True  # Master toggle for all scores
         self.show_f_score = True  # Submenu toggle for F score
         self.show_g_score = True  # Submenu toggle for G score
         self.show_h_score = True  # Submenu toggle for H score
@@ -300,10 +301,11 @@ class GameState:
         self.search_path = []
         
         # A* algorithm
-        open_heap = [(self.f_score[self.start_pos], self.start_pos)]
+        open_heap = [(self.f_score[self.start_pos], 0, self.start_pos)]  # Add tiebreaker as second element
+        heapq_counter = 1  # Counter for tiebreaking when f_scores are equal
         
         while open_heap:
-            _, current = heapq.heappop(open_heap)
+            _, _, current = heapq.heappop(open_heap)
             
             # Get neighbors for visualization
             neighbors = self.get_neighbors(current)
@@ -369,7 +371,8 @@ class GameState:
                     
                     if neighbor not in self.open_set:
                         self.open_set.add(neighbor)
-                        heapq.heappush(open_heap, (self.f_score[neighbor], neighbor))
+                        heapq.heappush(open_heap, (self.f_score[neighbor], heapq_counter, neighbor))
+                        heapq_counter += 1  # Increment counter to ensure unique second values
             
             # Capture state AFTER processing neighbors to show open nodes
             if current != self.goal_pos:  # Don't add duplicate state for goal
@@ -498,6 +501,26 @@ def draw_maze(screen, game_state):
 
 def draw_graph(screen, game_state):
     if game_state.show_graph:
+        # If in search animation, highlight all nodes with the same f-score
+        if game_state.search_animation_active and game_state.current_node:
+            current_f = game_state.f_score.get(game_state.current_node, float('inf'))
+            
+            # Find all nodes with the same f-score (which would be processed at similar priority)
+            same_f_nodes = []
+            for node in game_state.open_set:
+                if game_state.f_score.get(node, float('inf')) == current_f:
+                    same_f_nodes.append(node)
+            
+            # Draw a highlight for these nodes
+            for x, y in same_f_nodes:
+                center = (x * CELL_SIZE + CELL_SIZE // 2, y * CELL_SIZE + CELL_SIZE // 2)
+                radius = CELL_SIZE // 2 + 4  # Slightly larger than the node
+                
+                # Draw a glow effect
+                s = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+                pygame.draw.circle(s, F_SCORE_INDICATOR_COLOR, (radius, radius), radius)
+                screen.blit(s, (center[0]-radius, center[1]-radius))
+        
         # Draw connections first so they're underneath the nodes
         for node, came_from in game_state.came_from.items():
             node_center = (node[0] * CELL_SIZE + CELL_SIZE // 2, node[1] * CELL_SIZE + CELL_SIZE // 2)
@@ -888,6 +911,15 @@ def draw_sidebar(screen, game_state):
                 True, BLACK
             )
             screen.blit(current_info, (MAZE_AREA_WIDTH + 20, status_y + 20))
+            
+            # Show current f-score
+            current_f = game_state.f_score.get(game_state.current_node, float('inf'))
+            if current_f != float('inf'):
+                f_score_info = FONT_MEDIUM.render(
+                    f"Current f-score: {int(current_f)}", 
+                    True, BLACK
+                )
+                screen.blit(f_score_info, (MAZE_AREA_WIDTH + 20, status_y + 40))
 
 def draw_bottom_panel(screen, game_state):
     # Draw the bottom panel background
@@ -912,7 +944,8 @@ def draw_bottom_panel(screen, game_state):
         {"color": YELLOW, "label": "Final Path"},
         {"color": F_SCORE_COLOR, "label": "F-Score (f = g + h)"},
         {"color": G_SCORE_COLOR, "label": "G-Score (start dist)"},
-        {"color": H_SCORE_COLOR, "label": "H-Score (goal dist)"}
+        {"color": H_SCORE_COLOR, "label": "H-Score (goal dist)"},
+        {"color": F_SCORE_INDICATOR_COLOR, "label": "Same F-Score Group"}
     ]
     
     # Calculate how much space we need
@@ -945,10 +978,22 @@ def draw_bottom_panel(screen, game_state):
         x = legend_x + col * column_width
         y = legend_start_y + row * (item_height + item_margin)
         
-        # Draw color sample
-        sample_rect = pygame.Rect(x, y, 20, 20)
-        pygame.draw.rect(screen, item["color"], sample_rect, border_radius=3)
-        pygame.draw.rect(screen, BLACK, sample_rect, width=1, border_radius=3)
+        # Handle alpha value in color
+        if len(item["color"]) > 3:
+            # For colors with alpha, we need a special drawing approach
+            sample_rect = pygame.Rect(x, y, 20, 20)
+            # First draw underlying white to show transparency clearly
+            pygame.draw.rect(screen, WHITE, sample_rect, border_radius=3)
+            # Then draw our semi-transparent color on top
+            s = pygame.Surface((20, 20), pygame.SRCALPHA)
+            pygame.draw.rect(s, item["color"], (0, 0, 20, 20), border_radius=3)
+            screen.blit(s, (x, y))
+            pygame.draw.rect(screen, BLACK, sample_rect, width=1, border_radius=3)
+        else:
+            # For regular colors without alpha
+            sample_rect = pygame.Rect(x, y, 20, 20)
+            pygame.draw.rect(screen, item["color"], sample_rect, border_radius=3)
+            pygame.draw.rect(screen, BLACK, sample_rect, width=1, border_radius=3)
         
         # Draw label
         label_text = FONT_MEDIUM.render(item["label"], True, BLACK)
@@ -980,6 +1025,13 @@ def draw_bottom_panel(screen, game_state):
     nodes_explored = len(game_state.closed_set)
     nodes_text = FONT_MEDIUM.render(f"Nodes Explored: {nodes_explored}", True, BLACK)
     screen.blit(nodes_text, (stats_x + 10, stats_y + 70))
+    
+    # Add an explanation of the A* animation
+    if game_state.search_animation_active:
+        explanation_text = FONT_SMALL.render("A* explores nodes in order of lowest f-score first", True, BLACK)
+        screen.blit(explanation_text, (stats_x + 10, stats_y + 100))
+        explanation_text2 = FONT_SMALL.render("Highlighted nodes have the same f-score priority", True, BLACK)
+        screen.blit(explanation_text2, (stats_x + 10, stats_y + 120))
 
 def main():
     # Set up the display
