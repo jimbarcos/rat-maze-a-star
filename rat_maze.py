@@ -20,7 +20,7 @@ MAZE_AREA_HEIGHT = GRID_HEIGHT * CELL_SIZE
 BOTTOM_PANEL_HEIGHT = HEIGHT - MAZE_AREA_HEIGHT
 FPS = 60
 PATH_ANIMATION_SPEED = 8  # Frames per step in path animation
-SEARCH_ANIMATION_SPEED = 4  # Frames per step in search animation - can be modified by user
+SEARCH_ANIMATION_SPEED = 4  # Frames per step in search animation
 MIN_ANIMATION_SPEED = 1
 MAX_ANIMATION_SPEED = 20
 
@@ -80,11 +80,12 @@ class GameState:
         self.h_score = {}  # Add h_score dictionary
         self.show_maze = True
         self.show_graph = False
-        self.show_path = True
+        self.show_path = False
         self.show_scores = True  # Master toggle for all scores
-        self.show_f_score = True  # Submenu toggle for F score
-        self.show_g_score = True  # Submenu toggle for G score
+        self.show_f_score = True # Submenu toggle for F score
+        self.show_g_score = True # Submenu toggle for G score
         self.show_h_score = True  # Submenu toggle for H score
+        self.show_map_nodes = False  # New layer for map nodes
         self.mouse_pos = self.start_pos
         self.animation_step = 0
         self.animation_counter = 0
@@ -404,6 +405,8 @@ class GameState:
             self.show_g_score = not self.show_g_score
         elif layer_num == 7:
             self.show_h_score = not self.show_h_score
+        elif layer_num == 8:
+            self.show_map_nodes = not self.show_map_nodes
     
     def start_animation(self):
         if self.path:
@@ -749,10 +752,10 @@ def draw_path(screen, game_state):
             end_center = (end_pos[0] * CELL_SIZE + CELL_SIZE // 2, end_pos[1] * CELL_SIZE + CELL_SIZE // 2)
             
             # Draw arrow-like path
-            pygame.draw.line(screen, YELLOW, start_center, end_center, 4)
+            pygame.draw.line(screen, BLACK, start_center, end_center, 4)
             
             # Draw a small circle at each node in the path
-            pygame.draw.circle(screen, YELLOW, start_center, 5)
+            pygame.draw.circle(screen, ORANGE, start_center, 5)
         
         # Draw the final point
         final_pos = game_state.path[-1]
@@ -837,6 +840,7 @@ def draw_sidebar(screen, game_state):
         {"key": "5", "action": "Toggle F-Score", "active": game_state.show_f_score and game_state.show_scores},
         {"key": "6", "action": "Toggle G-Score", "active": game_state.show_g_score and game_state.show_scores},
         {"key": "7", "action": "Toggle H-Score", "active": game_state.show_h_score and game_state.show_scores},
+        {"key": "8", "action": "Show Map Nodes/Tree", "active": game_state.show_map_nodes},
         {"key": "spc", "action": "Start Path Animation", "active": game_state.animation_active},
         {"key": "A", "action": "Watch A* Search", "active": game_state.search_animation_active},
         {"key": "P", "action": "Pause Animation", "active": game_state.paused},
@@ -886,7 +890,7 @@ def draw_sidebar(screen, game_state):
     control_tips_y = speed_y + 25
     screen.blit(FONT_SMALL.render("Press + / - to adjust speed", True, BLACK), 
                (MAZE_AREA_WIDTH + 20, control_tips_y))
-    screen.blit(FONT_SMALL.render("Lower = Slower", True, BLACK), 
+    screen.blit(FONT_SMALL.render("Higher = Slower", True, BLACK), 
                (MAZE_AREA_WIDTH + 20, control_tips_y + 20))
     
     # Show current animation status
@@ -941,7 +945,7 @@ def draw_bottom_panel(screen, game_state):
         {"color": OPEN_NODE_COLOR, "label": "Open Nodes"},
         {"color": CLOSED_NODE_COLOR, "label": "Closed Nodes"},
         {"color": CURRENT_NODE_COLOR, "label": "Current Node"},
-        {"color": YELLOW, "label": "Final Path"},
+        {"color": BLACK, "label": "Final Path"},
         {"color": F_SCORE_COLOR, "label": "F-Score (f = g + h)"},
         {"color": G_SCORE_COLOR, "label": "G-Score (start dist)"},
         {"color": H_SCORE_COLOR, "label": "H-Score (goal dist)"},
@@ -1033,6 +1037,61 @@ def draw_bottom_panel(screen, game_state):
         explanation_text2 = FONT_SMALL.render("Highlighted nodes have the same f-score priority", True, BLACK)
         screen.blit(explanation_text2, (stats_x + 10, stats_y + 120))
 
+def draw_map_nodes_layer(screen, game_state):
+    if not game_state.show_map_nodes:
+        return
+    # 1. Draw the search tree (came_from) as blue lines
+    for node, parent in game_state.came_from.items():
+        node_center = (node[0] * CELL_SIZE + CELL_SIZE // 2, node[1] * CELL_SIZE + CELL_SIZE // 2)
+        parent_center = (parent[0] * CELL_SIZE + CELL_SIZE // 2, parent[1] * CELL_SIZE + CELL_SIZE // 2)
+        pygame.draw.line(screen, (0, 120, 255), node_center, parent_center, 3)
+
+    # 2. Draw all explored nodes as colored circles with thick black borders
+    explored_nodes = set(game_state.came_from.keys()) | set(game_state.path)
+    # Compute min and max f for color scaling
+    f_values = [game_state.f_score.get(node, 0) for node in explored_nodes if game_state.f_score.get(node) is not None]
+    min_f = min(f_values) if f_values else 0
+    max_f = max(f_values) if f_values else 1
+    def f_to_color(f):
+        # Green (low) to Red (high)
+        if max_f == min_f:
+            t = 0
+        else:
+            t = (f - min_f) / (max_f - min_f)
+        r = int(255 * t)
+        g = int(200 * (1 - t))
+        b = 80
+        return (r, g, b)
+    for node in explored_nodes:
+        x, y = node
+        center = (x * CELL_SIZE + CELL_SIZE // 2, y * CELL_SIZE + CELL_SIZE // 2)
+        f = game_state.f_score.get(node, None)
+        color = f_to_color(f) if f is not None else (200, 200, 200)
+        pygame.draw.circle(screen, (0, 0, 0), center, CELL_SIZE // 3 + 2, 0)  # Outer border
+        pygame.draw.circle(screen, color, center, CELL_SIZE // 3, 0)  # Colored fill
+
+    # 3. Draw the final path as a thick black line
+    path = game_state.path
+    if path:
+        for i in range(len(path) - 1):
+            start = path[i]
+            end = path[i + 1]
+            start_center = (start[0] * CELL_SIZE + CELL_SIZE // 2, start[1] * CELL_SIZE + CELL_SIZE // 2)
+            end_center = (end[0] * CELL_SIZE + CELL_SIZE // 2, end[1] * CELL_SIZE + CELL_SIZE // 2)
+            pygame.draw.line(screen, (0, 0, 0), start_center, end_center, 3)
+
+    # 4. Draw only the f score for each node, centered inside the circle
+    for node in explored_nodes:
+        x, y = node
+        center = (x * CELL_SIZE + CELL_SIZE // 2, y * CELL_SIZE + CELL_SIZE // 2)
+        f = game_state.f_score.get(node, None)
+        if f is not None:
+            cost_str = f"{int(f)}"
+            font = FONT_SCORE_LARGE
+            cost_text = font.render(cost_str, True, (0,0,0))
+            text_rect = cost_text.get_rect(center=center)
+            screen.blit(cost_text, text_rect)
+
 def main():
     # Set up the display
     screen = pygame.display.set_mode((MAZE_AREA_WIDTH + SIDEBAR_WIDTH, HEIGHT))
@@ -1066,6 +1125,8 @@ def main():
                     game_state.toggle_layer(6)
                 elif event.key == pygame.K_7:
                     game_state.toggle_layer(7)
+                elif event.key == pygame.K_8:
+                    game_state.toggle_layer(8)
                 elif event.key == pygame.K_SPACE:
                     game_state.start_animation()
                 elif event.key == pygame.K_a:
@@ -1095,6 +1156,7 @@ def main():
         draw_maze(screen, game_state)
         draw_graph(screen, game_state)
         draw_path(screen, game_state)
+        draw_map_nodes_layer(screen, game_state)
         draw_mouse_and_cheese(screen, game_state)
         
         # Draw bottom panel (legend and statistics)

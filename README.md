@@ -1,4 +1,4 @@
-# A* Pathfinding Rat Maze - Group 5
+# A* Rat Maze Problem (Group 5)
 
 A Pygame-based visualization where a mouse (rat) navigates through a procedurally generated maze to find cheese using the A* pathfinding algorithm. This educational tool demonstrates how A* pathfinding works by visualizing the search process, calculated paths, and scoring metrics.
 
@@ -14,6 +14,7 @@ A Pygame-based visualization where a mouse (rat) navigates through a procedurall
   - Layer 3: The calculated optimal path
   - Layer 4: All scores (master toggle)
   - Layer 5-7: Individual F/G/H score toggles
+  - Layer 8: Tree visualization showing exploration pattern
 - Responsive score display that shows larger values when fewer score types are enabled
 - Clean UI with information panels showing:
   - Legend explaining all visualization elements
@@ -21,6 +22,7 @@ A Pygame-based visualization where a mouse (rat) navigates through a procedurall
   - Controls for all available actions
 - Animated mouse character that rotates to face its direction of travel
 - Pause/resume functionality to examine the algorithm at any step
+- Visual highlighting of nodes with the same F-score to demonstrate the prioritization process
 
 ## Requirements
 
@@ -51,10 +53,11 @@ python rat_maze.py
 - `5`: Toggle F-scores (total cost)
 - `6`: Toggle G-scores (distance from start)
 - `7`: Toggle H-scores (heuristic to goal)
+- `8`: Toggle map nodes/tree visualization
 - `Space`: Start path following animation
 - `A`: Start A* search animation
 - `P`: Pause/resume animation
-- `+/-`: Adjust search animation speed
+- `+/-`: Adjust search animation speed (higher = slower)
 - `R`: Generate a new random maze
 
 ## A* Algorithm Visualization
@@ -65,7 +68,8 @@ This simulation visualizes the famous A* pathfinding algorithm, showing:
 - **Light Blue circles**: Open nodes (frontier) being considered
 - **Light Pink circles**: Closed nodes already evaluated
 - **Orange glowing circle**: Current node being processed
-- **Yellow lines**: Calculated optimal path
+- **Black lines**: Calculated optimal path
+- **Yellow highlight**: Nodes with the same F-score (equal priority)
 
 ### A* Scores
 - **F-score** (yellow background): Total estimated cost (f = g + h)
